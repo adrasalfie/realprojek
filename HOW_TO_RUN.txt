@@ -1,0 +1,10 @@
+1. Pastikan python sudah terinstall minimal versi 3.11.0
+2. jalankan command disamping untuk install library -> pip install -r requirements.txt
+3. di dalam folder project siapin
+    - File Utama.xlsx
+    - File lps
+    - file sijk
+4. sebelum jalankan program pastikan nama filenya ada yang berubah atau tidak, sesuaiin di baris nomor 18, 20, dan baris 24 di file main.py, lalu
+5. jalankan -> python main.py (Kalo udah selesai dia bakal munculin file baru -> File_Utama_Hasil.xlsx)
+6. jalankan -> python filter.py (syarat jalanin ini harus ada "File_Utama_Hasil.xlsx" klo udah berhasil bakal muncul file baru -> File_Utama_Final.xlsx)
+7. OPSIONAL = jalankan python sample_proses_rapid.py untuk melihat contoh proses rapidfuzznya
