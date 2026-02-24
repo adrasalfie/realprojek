@@ -282,12 +282,12 @@ def process_source_table_with_monitoring(
                 "source": source_label
             }
 
-            # --- TAMBAHAN: Menyalin kolom-kolom tambahan berdasarkan mapping ---
+            # Menyalin kolom-kolom tambahan berdasarkan mapping
             if additional_columns_mapping:
                 for source_col, target_col in additional_columns_mapping.items():
                     new_row[target_col] = row.get(source_col, "")
 
-            # --- TAMBAHAN: Mengisi kolom otomatis ---
+            # Mengisi kolom otomatis
             if auto_fill_columns:
                 for col_name, col_value in auto_fill_columns.items():
                     new_row[col_name] = col_value
@@ -407,14 +407,11 @@ def run_second_scenario_pipeline_and_save(
             )
         return df
 
-     # =====================================================
-    # FUNGSI BARU: Mapping Badan Usaha Berdasarkan Kata Kunci
-    # =====================================================
+#Mapping BADAN USAHA
     def apply_contains_mapping_badan_usaha(df, col_name):
         if col_name not in df.columns:
             return df
-        
-        # Urutan matters! yang lebih spesifik taruh di atas
+
         map_badan_usaha_rules = [
             {"keywords": ["persero"], "value": "1"},
             {"keywords": ["pt"], "value": "2"},
@@ -434,7 +431,7 @@ def run_second_scenario_pipeline_and_save(
                 target_value = rule["value"]
                 
                 for kw in keywords:
-                    if kw in value_clean:  # Cek apakah keyword ADA di dalam string
+                    if kw in value_clean: 
                         return target_value
             
             return "9" # Default kalau tidak match
