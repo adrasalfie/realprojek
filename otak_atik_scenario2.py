@@ -36,7 +36,72 @@ def deduplicate_by_key(df, key_col, label=None):
 
     return df.reset_index(drop=True)
 
-
+# =====================================================
+# PRE-CLEANING SIJK (Fuzzy Duplicate Removal)
+# =====================================================
+def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75):
+    """
+    Hapus duplikat SIJK berdasarkan fuzzy matching Nama + Alamat.
+    Tidak menggunakan NIB, tapi membandingkan kemiripan data.
+    """
+    sijk_clean = sijk.copy()
+    
+    # Cek apakah kolom yang dibutuhkan ada
+    required_cols = ["nama_bu", "alamat_bu", "nmprov", "nmkab"]
+    for col in required_cols:
+        if col not in sijk_clean.columns:
+            print(f"[WARNING] Kolom '{col}' tidak ditemukan di SIJK")
+            return sijk_clean
+    
+    # Normalisasi kolom untuk perbandingan
+    sijk_clean["_nama_norm"] = sijk_clean["nama_bu"].str.upper().str.strip()
+    sijk_clean["_alamat_norm"] = sijk_clean["alamat_bu"].str.upper().str.strip()
+    
+    rows_to_drop = set()
+    total_dropped = 0
+    
+    print(f"[PRE-CLEAN] SIJK: Memulai fuzzy duplicate removal...")
+    
+    # Group berdasarkan nmprov dan nmkab
+    for (nmprov, nmkab), group in sijk_clean.groupby(["nmprov", "nmkab"]):
+        group_indices = list(group.index)
+        
+        for i_idx in range(len(group_indices)):
+            i = group_indices[i_idx]
+            if i in rows_to_drop:
+                continue
+            
+            row_i = sijk_clean.loc[i]
+            text_i = f"{row_i['_nama_norm']} {row_i['_alamat_norm']}"
+            
+            for j_idx in range(i_idx + 1, len(group_indices)):
+                j = group_indices[j_idx]
+                if j in rows_to_drop:
+                    continue
+                
+                row_j = sijk_clean.loc[j]
+                text_j = f"{row_j['_nama_norm']} {row_j['_alamat_norm']}"
+                
+                # Hitung similarity menggunakan token_set_ratio
+                similarity = fuzz.token_set_ratio(text_i, text_j)
+                
+                if similarity >= threshold:
+                    rows_to_drop.add(j)
+    
+    # Hapus baris yang teridentifikasi sebagai duplikat
+    if rows_to_drop:
+        sijk_clean = sijk_clean.drop(index=list(rows_to_drop))
+        total_dropped = len(rows_to_drop)
+    
+    # Hapus kolom temporary
+    sijk_clean = sijk_clean.drop(
+        columns=["_nama_norm", "_alamat_norm"],
+        errors="ignore"
+    )
+    
+    print(f"[PRE-CLEAN] SIJK: {total_dropped} duplikat fuzzy dihapus")
+    
+    return sijk_clean.reset_index(drop=True)
 
 ########################
 # PART 1 HELPER FUNCTION
@@ -318,8 +383,14 @@ def run_second_scenario_pipeline_and_save(
     # ---- prepare sf
     df_sf = make_sf_kdkab(df_sf)
 
+    # =====================================================
+    # PRE-CLEANING SIJK (Fuzzy Duplicate Removal)
+    # Hapus duplikat berdasarkan Nama + Alamat (BUKAN NIB)
+    # =====================================================
+    df_sijk = preclean_sijk(df_sijk, threshold=75)
+
     # ---- deduplicate sijk and lpse
-    df_sijk = deduplicate_by_key(df_sijk, "nib", "SIJK")
+    # df_sijk = deduplicate_by_key(df_sijk, "nib", "SIJK")
     df_lpse = deduplicate_by_key(df_lpse, "kd_penyedia", "LPSE")
 
     #---- Year of revision for monitoring
