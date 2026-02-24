@@ -407,6 +407,41 @@ def run_second_scenario_pipeline_and_save(
             )
         return df
 
+     # =====================================================
+    # FUNGSI BARU: Mapping Badan Usaha Berdasarkan Kata Kunci
+    # =====================================================
+    def apply_contains_mapping_badan_usaha(df, col_name):
+        if col_name not in df.columns:
+            return df
+        
+        # Urutan matters! yang lebih spesifik taruh di atas
+        map_badan_usaha_rules = [
+            {"keywords": ["persero"], "value": "1"},
+            {"keywords": ["pt"], "value": "2"},
+            {"keywords": ["cv", "commanditer", "persekutuan komanditer"], "value": "3"},
+            {"keywords": ["koperasi"], "value": "4"},
+            {"keywords": ["kantor perwakilan bujka"], "value": "5"},
+        ]
+        
+        def find_match(value):
+            if pd.isna(value) or str(value).strip() == "" or str(value) == "nan":
+                return "9" # Default jika kosong
+            
+            value_clean = str(value).lower().strip()
+            
+            for rule in map_badan_usaha_rules:
+                keywords = rule["keywords"]
+                target_value = rule["value"]
+                
+                for kw in keywords:
+                    if kw in value_clean:  # Cek apakah keyword ADA di dalam string
+                        return target_value
+            
+            return "9" # Default kalau tidak match
+        
+        df[col_name] = df[col_name].apply(find_match)
+        return df
+
     # Mapping KUALIFIKASI
     map_kualifikasi = {
         "spesialis": "1",
@@ -426,14 +461,8 @@ def run_second_scenario_pipeline_and_save(
     df_insert_all = apply_mapping_konversi(df_insert_all, "skala_usaha", map_skala)
 
     # Mapping BADAN USAHA (LPSE + SIJK)
-    map_badan_usaha = {
-        "pt. persero (bumn/bumd)": "1",
-        "pt": "2",
-        "cv": "3",
-        "koperasi": "4",
-        "kantor perwakilan bujka": "5",
-    }
-    df_insert_all = apply_mapping_konversi(df_insert_all, "badan_usaha", map_badan_usaha)
+    df_insert_all = apply_contains_mapping_badan_usaha(df_insert_all, "badan_usaha")
+
 
     # ---- final sf
     df_sf_final = pd.concat([df_sf, df_insert_all], ignore_index=True)
