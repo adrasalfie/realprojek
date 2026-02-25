@@ -39,30 +39,39 @@ def deduplicate_by_key(df, key_col, label=None):
 # =====================================================
 # PRE-CLEANING SIJK (Fuzzy Duplicate Removal)
 # =====================================================
-def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75):
+def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False):
     """
     Hapus duplikat SIJK berdasarkan fuzzy matching Nama + Alamat.
     Tidak menggunakan NIB, tapi membandingkan kemiripan data.
+    
+    Args:
+        sijk: DataFrame SIJK
+        threshold: Batas similarity (default 75)
+        preview: Jika True, return preview data yang dihapus
+    
+    Returns:
+        Jika preview=False: DataFrame SIJK yang sudah dibersihkan
+        Jika preview=True: Tuple (DataFrame bersih, DataFrame preview)
     """
     sijk_clean = sijk.copy()
+    preview_rows = []
     
     # Cek apakah kolom yang dibutuhkan ada
     required_cols = ["nama_bu", "alamat_bu", "nmprov", "nmkab"]
     for col in required_cols:
         if col not in sijk_clean.columns:
             print(f"[WARNING] Kolom '{col}' tidak ditemukan di SIJK")
-            return sijk_clean
+            return (sijk_clean, pd.DataFrame()) if preview else sijk_clean
     
     # Normalisasi kolom untuk perbandingan
     sijk_clean["_nama_norm"] = sijk_clean["nama_bu"].str.upper().str.strip()
     sijk_clean["_alamat_norm"] = sijk_clean["alamat_bu"].str.upper().str.strip()
     
     rows_to_drop = set()
-    total_dropped = 0
     
-    print(f"[PRE-CLEAN] SIJK: Memulai fuzzy duplicate removal...")
+    print(f"[PRE-CLEAN] SIJK: Memulai fuzzy duplicate removal (threshold={threshold})...")
     
-    # Group berdasarkan nmprov dan nmkab
+    # Group berdasarkan nm_prov dan nm_kab
     for (nmprov, nmkab), group in sijk_clean.groupby(["nmprov", "nmkab"]):
         group_indices = list(group.index)
         
@@ -87,11 +96,20 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75):
                 
                 if similarity >= threshold:
                     rows_to_drop.add(j)
+                    
+                    # Simpan data untuk preview
+                    preview_rows.append({
+                        "nama_1": row_i["nama_bu"],
+                        "alamat_1": row_i["alamat_bu"],
+                        "nama_2": row_j["nama_bu"],
+                        "alamat_2": row_j["alamat_bu"],
+                        "similarity": similarity,
+                        "aksi": "DROP"
+                    })
     
     # Hapus baris yang teridentifikasi sebagai duplikat
     if rows_to_drop:
         sijk_clean = sijk_clean.drop(index=list(rows_to_drop))
-        total_dropped = len(rows_to_drop)
     
     # Hapus kolom temporary
     sijk_clean = sijk_clean.drop(
@@ -99,9 +117,15 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75):
         errors="ignore"
     )
     
-    print(f"[PRE-CLEAN] SIJK: {total_dropped} duplikat fuzzy dihapus")
+    print(f"[PRE-CLEAN] SIJK: {len(rows_to_drop)} duplikat fuzzy dihapus")
     
-    return sijk_clean.reset_index(drop=True)
+    # Buat DataFrame preview
+    preview_df = pd.DataFrame(preview_rows)
+    
+    if preview:
+        return sijk_clean.reset_index(drop=True), preview_df
+    else:
+        return sijk_clean.reset_index(drop=True)
 
 ########################
 # PART 1 HELPER FUNCTION
@@ -371,7 +395,7 @@ def run_second_scenario_pipeline_and_save(
     path_sijk,
     path_lpse,
     output_sf_path,
-    output_monitoring_path
+    output_monitoring_path,    
 ):
 
     # ---- load again from excel
@@ -383,14 +407,10 @@ def run_second_scenario_pipeline_and_save(
     # ---- prepare sf
     df_sf = make_sf_kdkab(df_sf)
 
-    # =====================================================
     # PRE-CLEANING SIJK (Fuzzy Duplicate Removal)
-    # Hapus duplikat berdasarkan Nama + Alamat (BUKAN NIB)
-    # =====================================================
-    df_sijk = preclean_sijk(df_sijk, threshold=75)
+    df_sijk, preview_sijk_df = preclean_sijk(df_sijk, threshold=75, preview=True)
 
     # ---- deduplicate sijk and lpse
-    # df_sijk = deduplicate_by_key(df_sijk, "nib", "SIJK")
     df_lpse = deduplicate_by_key(df_lpse, "kd_penyedia", "LPSE")
 
     #---- Year of revision for monitoring
@@ -422,7 +442,6 @@ def run_second_scenario_pipeline_and_save(
         "kd_klasifikasi": "kbli",
         "kd_penyedia": "kd_penyedia",
     }
-
 
     #--- auto fill columns for sijk
     auto_fill_sijk = {
@@ -535,8 +554,19 @@ def run_second_scenario_pipeline_and_save(
     # ---- final sf
     df_sf_final = pd.concat([df_sf, df_insert_all], ignore_index=True)
 
+    # ---- save to Excel with multiple sheets    
+    with pd.ExcelWriter(output_sf_path, engine='openpyxl') as writer:
+        # Sheet 1: Data SF Utama
+        df_sf_final.to_excel(writer, sheet_name='SF_Final', index=False)
+        
+        # Sheet 2: Preview Duplikat SIJK
+        if not preview_sijk_df.empty:
+            preview_sijk_df.to_excel(writer, sheet_name='Preview_SIJK_Duplikat', index=False)
+            print(f"[PREVIEW] {len(preview_sijk_df)} data duplikat SIJK disimpan di worksheet 'Preview_SIJK_Duplikat'")
+        else:
+            print("[PREVIEW] Tidak ada duplikat fuzzy yang ditemukan di SIJK")
+
     # ---- save
-    df_sf_final.to_excel(output_sf_path, index=False)
     df_monitoring.to_excel(output_monitoring_path, index=False)
 
     return df_sf_final, df_monitoring
