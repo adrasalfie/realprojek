@@ -42,14 +42,12 @@ def deduplicate_by_key(df, key_col, label=None):
 def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False):
     sijk_clean = sijk.copy()
     preview_rows = []
-    preview_rows = []
     
     # Cek apakah kolom yang dibutuhkan ada
     required_cols = ["nama_bu", "alamat_bu", "nmprov", "nmkab"]
     for col in required_cols:
         if col not in sijk_clean.columns:
             print(f"[WARNING] Kolom '{col}' tidak ditemukan di SIJK")
-            return (sijk_clean, pd.DataFrame()) if preview else sijk_clean
             return (sijk_clean, pd.DataFrame()) if preview else sijk_clean
     
     # Normalisasi kolom untuk perbandingan
@@ -59,9 +57,7 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False
     rows_to_drop = set()
     
     print(f"[PRE-CLEAN] SIJK: Memulai fuzzy duplicate removal (threshold={threshold})...")
-    print(f"[PRE-CLEAN] SIJK: Memulai fuzzy duplicate removal (threshold={threshold})...")
     
-    # Group berdasarkan nm_prov dan nm_kab
     # Group berdasarkan nm_prov dan nm_kab
     for (nmprov, nmkab), group in sijk_clean.groupby(["nmprov", "nmkab"]):
         group_indices = list(group.index)
@@ -97,16 +93,6 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False
                         "similarity": similarity,
                         "aksi": "DROP"
                     })
-                    
-                    # Simpan data untuk preview
-                    preview_rows.append({
-                        "nama_1": row_i["nama_bu"],
-                        "alamat_1": row_i["alamat_bu"],
-                        "nama_2": row_j["nama_bu"],
-                        "alamat_2": row_j["alamat_bu"],
-                        "similarity": similarity,
-                        "aksi": "DROP"
-                    })
     
     # Hapus baris yang teridentifikasi sebagai duplikat
     if rows_to_drop:
@@ -122,15 +108,7 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False
     
     # Buat DataFrame preview
     preview_df = pd.DataFrame(preview_rows)
-    print(f"[PRE-CLEAN] SIJK: {len(rows_to_drop)} duplikat fuzzy dihapus")
     
-    # Buat DataFrame preview
-    preview_df = pd.DataFrame(preview_rows)
-    
-    if preview:
-        return sijk_clean.reset_index(drop=True), preview_df
-    else:
-        return sijk_clean.reset_index(drop=True)
     if preview:
         return sijk_clean.reset_index(drop=True), preview_df
     else:
@@ -404,7 +382,7 @@ def run_second_scenario_pipeline_and_save(
     path_sijk,
     path_lpse,
     output_sf_path,
-    output_monitoring_path,     
+    output_monitoring_path,    
 ):
 
     # ---- load again from excel
@@ -417,7 +395,6 @@ def run_second_scenario_pipeline_and_save(
     df_sf = make_sf_kdkab(df_sf)
 
     # PRE-CLEANING SIJK (Fuzzy Duplicate Removal)
-    df_sijk, preview_sijk_df = preclean_sijk(df_sijk, threshold=75, preview=True)
     df_sijk, preview_sijk_df = preclean_sijk(df_sijk, threshold=75, preview=True)
 
     # ---- deduplicate sijk and lpse
@@ -563,18 +540,6 @@ def run_second_scenario_pipeline_and_save(
 
     # ---- final sf
     df_sf_final = pd.concat([df_sf, df_insert_all], ignore_index=True)
-
-    # ---- save to Excel with multiple sheets    
-    with pd.ExcelWriter(output_sf_path, engine='openpyxl') as writer:
-        # Sheet 1: Data SF Utama
-        df_sf_final.to_excel(writer, sheet_name='SF_Final', index=False)
-        
-        # Sheet 2: Preview Duplikat SIJK
-        if not preview_sijk_df.empty:
-            preview_sijk_df.to_excel(writer, sheet_name='Preview_SIJK_Duplikat', index=False)
-            print(f"[PREVIEW] {len(preview_sijk_df)} data duplikat SIJK disimpan di worksheet 'Preview_SIJK_Duplikat'")
-        else:
-            print("[PREVIEW] Tidak ada duplikat fuzzy yang ditemukan di SIJK")
 
     # ---- save to Excel with multiple sheets    
     with pd.ExcelWriter(output_sf_path, engine='openpyxl') as writer:
