@@ -404,8 +404,7 @@ def run_second_scenario_pipeline_and_save(
     path_sijk,
     path_lpse,
     output_sf_path,
-    output_monitoring_path,    
-    output_monitoring_path,    
+    output_monitoring_path,     
 ):
 
     # ---- load again from excel
