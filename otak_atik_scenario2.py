@@ -40,19 +40,6 @@ def deduplicate_by_key(df, key_col, label=None):
 # PRE-CLEANING SIJK (Fuzzy Duplicate Removal)
 # =====================================================
 def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False):
-    """
-    Hapus duplikat SIJK berdasarkan fuzzy matching Nama + Alamat.
-    Tidak menggunakan NIB, tapi membandingkan kemiripan data.
-    
-    Args:
-        sijk: DataFrame SIJK
-        threshold: Batas similarity (default 75)
-        preview: Jika True, return preview data yang dihapus
-    
-    Returns:
-        Jika preview=False: DataFrame SIJK yang sudah dibersihkan
-        Jika preview=True: Tuple (DataFrame bersih, DataFrame preview)
-    """
     sijk_clean = sijk.copy()
     preview_rows = []
     
