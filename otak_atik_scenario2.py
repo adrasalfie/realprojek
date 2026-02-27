@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import re
 from rapidfuzz import fuzz
 
 ########################
@@ -43,14 +44,12 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False
     sijk_clean = sijk.copy()
     preview_rows = []
     
-    # Cek apakah kolom yang dibutuhkan ada
     required_cols = ["nama_bu", "alamat_bu", "nmprov", "nmkab"]
     for col in required_cols:
         if col not in sijk_clean.columns:
             print(f"[WARNING] Kolom '{col}' tidak ditemukan di SIJK")
             return (sijk_clean, pd.DataFrame()) if preview else sijk_clean
     
-    # Normalisasi kolom untuk perbandingan
     sijk_clean["_nama_norm"] = sijk_clean["nama_bu"].str.upper().str.strip()
     sijk_clean["_alamat_norm"] = sijk_clean["alamat_bu"].str.upper().str.strip()
     
@@ -58,7 +57,6 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False
     
     print(f"[PRE-CLEAN] SIJK: Memulai fuzzy duplicate removal (threshold={threshold})...")
     
-    # Group berdasarkan nm_prov dan nm_kab
     for (nmprov, nmkab), group in sijk_clean.groupby(["nmprov", "nmkab"]):
         group_indices = list(group.index)
         
@@ -94,11 +92,9 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False
                         "aksi": "DROP"
                     })
     
-    # Hapus baris yang teridentifikasi sebagai duplikat
     if rows_to_drop:
         sijk_clean = sijk_clean.drop(index=list(rows_to_drop))
     
-    # Hapus kolom temporary
     sijk_clean = sijk_clean.drop(
         columns=["_nama_norm", "_alamat_norm"],
         errors="ignore"
@@ -106,7 +102,6 @@ def preclean_sijk(sijk: pd.DataFrame, threshold: int = 75, preview: bool = False
     
     print(f"[PRE-CLEAN] SIJK: {len(rows_to_drop)} duplikat fuzzy dihapus")
     
-    # Buat DataFrame preview
     preview_df = pd.DataFrame(preview_rows)
     
     if preview:
@@ -123,17 +118,47 @@ def load_excel(path_excel):
     return df
 
 def safe_str(x):
-    """
-    To ensure safe string so empty text is ""
-    """
     if pd.isna(x):
         return ""
     return str(x).strip().lower()
 
+def normalize_address(addr):
+    """
+    Normalisasi alamat: hapus RT, RW, Kel, Kec, NO, dll
+    """
+    if pd.isna(addr) or str(addr).strip() == "":
+        return ""
+    
+    addr = str(addr).upper().strip()
+    
+    # Hapus RT/RW dan angka setelahnya
+    addr = re.sub(r'RT\.?\s*\d+', '', addr)
+    addr = re.sub(r'RW\.?\s*\d+', '', addr)
+    
+    # Hapus Kel/Kec dan nama setelahnya
+    addr = re.sub(r'KEL\.?\s*[A-Z0-9 ]+', '', addr)
+    addr = re.sub(r'KEC\.?\s*[A-Z0-9 ]+', '', addr)
+    
+    # Hapus KOTA dan nama setelahnya (BARU!)
+    addr = re.sub(r'KOTA\s+[A-Z0-9 ]+', '', addr)
+    
+    # Hapus kata-kata umum + ANGKA
+    common_words = ['JL.', 'JL', 'JALAN', 'JLN', 'NO.', 'NOMOR', 'KELURAHAN', 'KECAMATAN']
+    for word in common_words:
+        addr = addr.replace(word, '')
+    
+    # Hapus ANGKA (NO RUMAH) - BARU!
+    addr = re.sub(r'\d+', '', addr)
+    
+    # Hapus karakter khusus
+    addr = re.sub(r'[^\w\s]', ' ', addr)
+    
+    # Hapus spasi berlebih
+    addr = ' '.join(addr.split())
+    
+    return addr.strip()
+
 def split_kdkab(kdkab):
-    """
-    To split kdkab 4 digits as 2 digits of prov and 2 digits of kab
-    """
     s = safe_str(kdkab)
     if len(s) < 4:
         return "", ""
@@ -192,10 +217,13 @@ def compare_one_to_one(
     sim["kab"] = 100 if src_kab == sf_kab and src_kab != "" else 0
     length["kab"] = len(src_kab)
 
-    # address only if both exist
+    # address dengan NORMALISASI
     if src_addr != "" and sf_addr != "":
-        sim["addr"] = fuzz.token_sort_ratio(src_addr, sf_addr)
-        length["addr"] = len(src_addr)
+        src_addr_norm = normalize_address(src_addr)
+        sf_addr_norm = normalize_address(sf_addr)
+        
+        sim["addr"] = fuzz.token_set_ratio(src_addr_norm, sf_addr_norm)
+        length["addr"] = len(src_addr_norm)
 
     wavg = weighted_average_similarity(sim, length)
 
@@ -212,15 +240,11 @@ def decision_rule(sim, wavg):
     sim_kab  = sim.get("kab", 0)
     sim_addr = sim.get("addr", None)
 
-    # ------------------------------------------------
     # strong weighted match
-    # ------------------------------------------------
     if wavg >= 90:
         return "DROP"
 
-    # ------------------------------------------------
     # borderline weighted match
-    # ------------------------------------------------
     if 80 <= wavg <= 89:
 
         # a) kdkab = 100 and name 90–100
@@ -243,9 +267,7 @@ def decision_rule(sim, wavg):
 
         return "INSERT"
 
-    # ------------------------------------------------
     # weak weighted match
-    # ------------------------------------------------
     return "INSERT"
 
 
@@ -265,15 +287,40 @@ def find_best_sf_match(
     best_sim = None
     best_sf_idx = None
 
+    src_name = safe_str(source_row[source_name_col])
     src_kab = safe_str(source_row[source_kdkab_col])
 
-    same_kab = df_sf[df_sf["kdkab_sf"] == src_kab]
+    # PRIORITAS 1: EXACT MATCH (Nama + Kab Sama)
+    src_name_upper = src_name.upper().strip()
+    
+    exact_match_mask = (
+        (df_sf["nama_perusahaan"].str.upper().str.strip() == src_name_upper) & 
+        (df_sf["kdkab_sf"] == src_kab)
+    )
+    
+    exact_matches = df_sf[exact_match_mask]
+    
+    if not exact_matches.empty:
+        exact_idx = exact_matches.index[0]
+        exact_row = df_sf.loc[exact_idx]
+        
+        sim, _, wavg = compare_one_to_one(
+            source_row,
+            exact_row,
+            source_name_col,
+            source_kdkab_col,
+            source_addr_col
+        )
+                
+        return exact_idx, sim, wavg
 
+    # PRIORITAS 2: FUZZY MATCH
+    same_kab = df_sf[df_sf["kdkab_sf"] == src_kab]
     candidate_sf = same_kab if len(same_kab) > 0 else df_sf
 
     for idx, sf_row in candidate_sf.iterrows():
 
-        sim, length, wavg = compare_one_to_one(
+        sim, _, wavg = compare_one_to_one(
             source_row,
             sf_row,
             source_name_col,
@@ -324,28 +371,21 @@ def process_source_table_with_monitoring(
         mon = {
             "source": source_label,
             "source_row_index": src_idx,
-
             "source_name": row[source_name_col],
             "source_kdkab": row[source_kdkab_col],
             "source_address": row[source_addr_col],
-
             "matched_sf_index": sf_idx,
             "sf_name": df_sf.loc[sf_idx, "nama_perusahaan"] if sf_idx is not None else None,
             "sf_kdkab": df_sf.loc[sf_idx, "kdkab_sf"] if sf_idx is not None else None,
-
             "sim_name": sim.get("name", None),
             "sim_kab": sim.get("kab", None),
             "sim_address": sim.get("addr", None),
-
             "weighted_similarity": best_wavg,
             "decision": decision
         }
 
         monitoring_rows.append(mon)
 
-        # ----------------------------
-        # insertion
-        # ----------------------------
         if decision == "INSERT":
 
             prov, kab = split_kdkab(row[source_kdkab_col])
@@ -358,7 +398,6 @@ def process_source_table_with_monitoring(
                 "source": source_label
             }
 
-            # Menyalin kolom-kolom tambahan berdasarkan mapping
             if additional_columns_mapping:
                 for source_col, target_col in additional_columns_mapping.items():
                     new_row[target_col] = row.get(source_col, "")
@@ -397,10 +436,8 @@ def run_second_scenario_pipeline_and_save(
     # PRE-CLEANING SIJK (Fuzzy Duplicate Removal)
     df_sijk, preview_sijk_df = preclean_sijk(df_sijk, threshold=75, preview=True)
 
-    # ---- deduplicate sijk and lpse
     df_lpse = deduplicate_by_key(df_lpse, "kd_penyedia", "LPSE")
 
-    #---- Year of revision for monitoring
     TAHUN_REVISI = str(datetime.now().year)
 
      # ---- additional mapping for SIJK
@@ -413,7 +450,8 @@ def run_second_scenario_pipeline_and_save(
         "skala_usaha": "skala_usaha",
         "telepon_bu": "no_telp",      
         "email_bu": "email",          
-        "sub_klasifikasi": "pekerjaan_utama"
+        "sub_klasifikasi": "pekerjaan_utama",
+        "nib": "nib",
     }
 
     # ---- additional mapping for LPSE
@@ -428,6 +466,7 @@ def run_second_scenario_pipeline_and_save(
         "nmkab": "nm_kab",
         "kd_klasifikasi": "kbli",
         "kd_penyedia": "kd_penyedia",
+        "nomor_izin_usaha": "nib",
     }
 
     #--- auto fill columns for sijk
@@ -443,8 +482,7 @@ def run_second_scenario_pipeline_and_save(
         "kategori": "F",
         "sumber_data": "1"
     }
-
-    # ---- SIJK
+    
     insert_sijk, monitor_sijk = process_source_table_with_monitoring(
         df_source = df_sijk,
         df_sf = df_sf,
@@ -456,7 +494,6 @@ def run_second_scenario_pipeline_and_save(
         auto_fill_columns = auto_fill_sijk
     )
 
-    # ---- LPSE
     insert_lpse, monitor_lpse = process_source_table_with_monitoring(
         df_source = df_lpse,
         df_sf = df_sf,
@@ -472,7 +509,6 @@ def run_second_scenario_pipeline_and_save(
     df_insert_all = pd.concat([insert_sijk, insert_lpse], ignore_index=True)
     df_monitoring = pd.concat([monitor_sijk, monitor_lpse], ignore_index=True)
     
-    # Fungsi helper untuk melakukan mapping konversi
     def apply_mapping_konversi(df, col_name, map_dict):
         if col_name in df.columns:
             df[col_name] = (
@@ -499,7 +535,7 @@ def run_second_scenario_pipeline_and_save(
         
         def find_match(value):
             if pd.isna(value) or str(value).strip() == "" or str(value) == "nan":
-                return "9" # Default jika kosong
+                return "9"
             
             value_clean = str(value).lower().strip()
             
@@ -511,7 +547,7 @@ def run_second_scenario_pipeline_and_save(
                     if kw in value_clean: 
                         return target_value
             
-            return "9" # Default kalau tidak match
+            return "9"
         
         df[col_name] = df[col_name].apply(find_match)
         return df
@@ -537,16 +573,13 @@ def run_second_scenario_pipeline_and_save(
     # Mapping BADAN USAHA (LPSE + SIJK)
     df_insert_all = apply_contains_mapping_badan_usaha(df_insert_all, "badan_usaha")
 
-
-    # ---- final sf
+    # Final SF
     df_sf_final = pd.concat([df_sf, df_insert_all], ignore_index=True)
 
-    # ---- save to Excel with multiple sheets    
+    # Save to Excel with multiple sheets    
     with pd.ExcelWriter(output_sf_path, engine='openpyxl') as writer:
-        # Sheet 1: Data SF Utama
         df_sf_final.to_excel(writer, sheet_name='SF_Final', index=False)
         
-        # Sheet 2: Preview Duplikat SIJK
         if not preview_sijk_df.empty:
             preview_sijk_df.to_excel(writer, sheet_name='Preview_SIJK_Duplikat', index=False)
             print(f"[PREVIEW] {len(preview_sijk_df)} data duplikat SIJK disimpan di worksheet 'Preview_SIJK_Duplikat'")
