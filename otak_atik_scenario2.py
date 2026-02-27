@@ -451,7 +451,7 @@ def run_second_scenario_pipeline_and_save(
         "telepon_bu": "no_telp",      
         "email_bu": "email",          
         "sub_klasifikasi": "pekerjaan_utama",
-        "nib": "nib",
+        "nib": "nib"
     }
 
     # ---- additional mapping for LPSE
@@ -466,7 +466,7 @@ def run_second_scenario_pipeline_and_save(
         "nmkab": "nm_kab",
         "kd_klasifikasi": "kbli",
         "kd_penyedia": "kd_penyedia",
-        "nomor_izin_usaha": "nib",
+        "nomor_izin_usaha": "nib"
     }
 
     #--- auto fill columns for sijk
