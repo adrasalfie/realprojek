@@ -768,6 +768,77 @@ if st.button("🚀 Run Pipeline"):
         ])
 
         # =============================================
+        # MAP KUALIFIKASI & SKALA_USAHA TO ANGKA
+        # =============================================
+        map_kualifikasi = {
+            "spesialis":               "1",
+            "kecil":                   "2",
+            "menengah":                "3",
+            "besar":                   "4",
+            "tidak memiliki sbu aktif": "9"
+        }
+
+        map_skala = {
+            "kecil":   "2",
+            "menengah": "3",
+            "besar":   "4"
+        }
+
+        map_badan_usaha_exact = {
+            "persero":                    "1",
+            "pt":                         "2",
+            "cv":                         "3",
+            "commanditer":                "3",
+            "persekutuan komanditer":     "3",
+            "koperasi":                   "4",
+            "kantor perwakilan bujka":    "5"
+        }
+
+        # regex patterns: urutan dari paling spesifik ke umum
+        badan_usaha_patterns = [
+            (r"persero",                                   "1"),
+            (r"\bpt\b|perseroan terbatas",                 "2"),
+            (r"\bcv\b|commanditer|persekutuan komanditer", "3"),
+            (r"koperasi",                                  "4"),
+            (r"kantor perwakilan bujka",                   "5"),
+        ]
+
+        def map_badan_usaha(val):
+            v = str(val).strip().lower()
+            if v in map_badan_usaha_exact:
+                return map_badan_usaha_exact[v]
+            for pattern, kode in badan_usaha_patterns:
+                if re.search(pattern, v):
+                    return kode
+            return val
+
+        if "kualifikasi" in df_final.columns:
+            df_final["kualifikasi"] = (
+                df_final["kualifikasi"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .map(map_kualifikasi)
+                .fillna(df_final["kualifikasi"])
+            )
+
+        if "skala_usaha" in df_final.columns:
+            df_final["skala_usaha"] = (
+                df_final["skala_usaha"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .map(map_skala)
+                .fillna(df_final["skala_usaha"])
+            )
+
+        if "badan_usaha" in df_final.columns:
+            df_final["badan_usaha"] = (
+                df_final["badan_usaha"]
+                .apply(map_badan_usaha)
+            )
+
+        # =============================================
         # SUMMARY
         # =============================================
         total_insert = len(df_insert)
