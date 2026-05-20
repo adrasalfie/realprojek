@@ -1,0 +1,12 @@
+FOR MAC OR LINUX
+
+RUN THIS IN TERMINAL
+chmod +x run.sh
+./run.sh
+
+FOR WINDOWS
+
+RUN THIS IN TERMINAL
+run.bat
+
+
