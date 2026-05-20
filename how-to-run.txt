@@ -1,0 +1,6 @@
+RUN THIS IN TERMINAL
+
+
+chmod +x run.sh
+./run.sh
+
