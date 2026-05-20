@@ -107,14 +107,14 @@ def standardize_sijk(df):
         # mapping lama
         "nama_bu": "nama_perusahaan",
         "npwp_bu": "npwp",
-        "telepon_bu": "no_telp",  # F -> AA
-        "email_bu": "email",   # G -> AE
+        "telepon_bu": "no_telp",  
+        "email_bu": "email",   
         "alamat_bu": "alamat_perusahaan",
         "nib": "nib",
 
-        "kdprov": "prov",                 # AA -> E
-        "kd_kab": "kab",                  # AI -> F
-        "sub_klasifikasi": "pekerjaan_utama",  # O -> AN
+        "kdprov": "prov",                 
+        "kd_kab": "kab",                  
+        "sub_klasifikasi": "pekerjaan_utama",  
 
         # mapping tambahan
         "bentuk_usaha_bu": "badan_usaha",
