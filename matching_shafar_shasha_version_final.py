@@ -16,8 +16,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 SF - SIJK - LPSE Matching Pipeline")
-st.markdown("### Interactive Fuzzy Matching & Entity Resolution System")
+st.title("Platform Matching SF - SIJK - LPSE Perusahaan Konstruksi")
+st.markdown("### Menggunakan Fuzzy Matching Algorithm dengan Rule-Based Decision untuk Menentukan Insert atau Drop")
 
 # =====================================================
 # FILE UPLOAD
@@ -1008,3 +1008,4 @@ if st.button("🚀 Run Pipeline"):
                     "officedocument.spreadsheetml.sheet"
                 )
             )
+st.text("Developed by Shafar & Shasha, Supervised by Direktorat Statistik Sumber Daya Mineral dan Konstruksi - © 2026")
